@@ -86,7 +86,6 @@ const OnboardingPage = () => {
     : !!selected;
 
   const handleFinish = async () => {
-    setLoading(true);
     const data: OnboardingData = {
       company: answers.company as string,
       role: answers.role as string,
@@ -94,20 +93,42 @@ const OnboardingPage = () => {
       languages: answers.languages as string[],
     };
 
-    // Store in localStorage for now (no DB)
-    localStorage.setItem("onboarding_data", JSON.stringify(data));
-
-    // Generate roadmap via AI
     try {
+      // 1. Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to save your results");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Generate roadmap via AI
       const res = await supabase.functions.invoke("generate-roadmap", {
         body: { userProfile: data },
       });
+
       if (res.error) throw res.error;
+
+      // 3. Save both to Supabase profiles
+      const { error: updateError } = await (supabase
+        .from("profiles") as any)
+        .update({
+          onboarding_data: data,
+          roadmap: res.data,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", user.id);
+
+      if (updateError) throw updateError;
+
+      // Also keep in localStorage for immediate sync (optional but helpful)
+      localStorage.setItem("onboarding_data", JSON.stringify(data));
       localStorage.setItem("ai_roadmap", JSON.stringify(res.data));
+
       toast.success("Your personalized roadmap is ready!");
-    } catch (err) {
-      console.error("Roadmap generation failed:", err);
-      toast.error("Roadmap generation failed, using default roadmap");
+    } catch (err: any) {
+      console.error("Onboarding failed:", err);
+      toast.error(err.message || "Failed to save profile or generate roadmap");
     }
 
     setLoading(false);
@@ -128,9 +149,8 @@ const OnboardingPage = () => {
           {steps.map((_, i) => (
             <div
               key={i}
-              className={`h-1.5 flex-1 rounded-full transition-all ${
-                i <= current ? "bg-primary" : "bg-muted"
-              }`}
+              className={`h-1.5 flex-1 rounded-full transition-all ${i <= current ? "bg-primary" : "bg-muted"
+                }`}
             />
           ))}
         </div>
@@ -162,11 +182,10 @@ const OnboardingPage = () => {
                   <button
                     key={opt}
                     onClick={() => handleSelect(opt)}
-                    className={`w-full text-left p-3.5 rounded-lg border transition-all text-sm ${
-                      isSelected
+                    className={`w-full text-left p-3.5 rounded-lg border transition-all text-sm ${isSelected
                         ? "border-primary/50 bg-primary/10 text-primary"
                         : "border-border hover:border-primary/30 text-foreground"
-                    }`}
+                      }`}
                   >
                     {opt}
                   </button>

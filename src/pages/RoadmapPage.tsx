@@ -33,40 +33,97 @@ const fallbackRoadmap: Roadmap = {
 const RoadmapPage = () => {
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem("ai_roadmap");
-    if (stored) {
-      try {
-        setRoadmap(JSON.parse(stored));
-      } catch {
+    const fetchRoadmap = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setFetching(false);
+        return;
+      }
+
+      const { data, error } = await (supabase
+        .from("profiles") as any)
+        .select("roadmap")
+        .eq("id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching roadmap:", error);
+        setRoadmap(fallbackRoadmap);
+      } else if (data && (data as any).roadmap) {
+        setRoadmap((data as any).roadmap as Roadmap);
+      } else {
         setRoadmap(fallbackRoadmap);
       }
-    } else {
-      setRoadmap(fallbackRoadmap);
-    }
+      setFetching(false);
+    };
+
+    fetchRoadmap();
+
+    // Subscribe to profile changes
+    const channel = supabase
+      .channel('profile-roadmap')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+        },
+        (payload) => {
+          if (payload.new.roadmap) {
+            setRoadmap(payload.new.roadmap as Roadmap);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const regenerate = async () => {
-    const profile = localStorage.getItem("onboarding_data");
-    if (!profile) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await (supabase
+      .from("profiles") as any)
+      .select("onboarding_data")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile || !(profile as any).onboarding_data) {
       toast.error("Complete onboarding first to generate a roadmap");
       return;
     }
+
     setLoading(true);
     try {
-      const res = await supabase.functions.invoke("generate-roadmap", {
-        body: { userProfile: JSON.parse(profile) },
+      const res = await (supabase.functions.invoke("generate-roadmap") as any)({
+        body: { userProfile: (profile as any).onboarding_data },
       });
       if (res.error) throw res.error;
+
+      const { error: updateError } = await (supabase
+        .from("profiles") as any)
+        .update({ roadmap: res.data })
+        .eq("id", user.id);
+
+      if (updateError) throw updateError;
+
       setRoadmap(res.data);
-      localStorage.setItem("ai_roadmap", JSON.stringify(res.data));
       toast.success("Roadmap regenerated!");
-    } catch {
+    } catch (err) {
+      console.error("Regeneration failed:", err);
       toast.error("Failed to regenerate roadmap");
     }
     setLoading(false);
   };
+
+  if (fetching) return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   if (!roadmap) return null;
 

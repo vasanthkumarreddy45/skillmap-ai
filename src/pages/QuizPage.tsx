@@ -33,6 +33,43 @@ const QuizPage = () => {
   }, [questions]);
 
   const q = questions[current];
+  const updateRoadmapProgress = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { data: profile, error: fetchError } = await (supabase
+        .from("profiles") as any)
+        .select("roadmap")
+        .eq("id", user.id)
+        .single();
+
+      if (fetchError || !profile || !(profile as any).roadmap) return;
+
+      const roadmap = (profile as any).roadmap as any;
+      // Find the first milestone that is not "done"
+      const nextMilestoneIndex = roadmap.milestones.findIndex((m: any) => m.status !== "done");
+
+      if (nextMilestoneIndex !== -1) {
+        roadmap.milestones[nextMilestoneIndex].status = "done";
+
+        const { error: updateError } = await (supabase
+          .from("profiles") as any)
+          .update({ roadmap })
+          .eq("id", user.id);
+
+        if (updateError) throw updateError;
+
+        toast.success("Progress updated! Milestone completed.", {
+          description: `You've mastered "${roadmap.milestones[nextMilestoneIndex].label}"`,
+          icon: <Sparkles className="w-4 h-4 text-primary" />,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update roadmap progress:", error);
+    }
+  };
+
   const isAnswered = selected !== null;
   const isCorrect = selected === q?.correct;
 
@@ -62,8 +99,16 @@ const QuizPage = () => {
   };
 
   const generateQuiz = async () => {
-    const profile = localStorage.getItem("onboarding_data");
-    const role = profile ? JSON.parse(profile).role : "Developer";
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await (supabase
+      .from("profiles") as any)
+      .select("onboarding_data")
+      .eq("id", user.id)
+      .single();
+
+    const role = (profile && (profile as any).onboarding_data) ? ((profile as any).onboarding_data as any).role : "Developer";
     const quizTopic = topic.trim() || "General Programming";
 
     setGenerating(true);
@@ -122,10 +167,9 @@ const QuizPage = () => {
           {questions.map((_, i) => (
             <div
               key={i}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-mono transition-all ${
-                i === current ? "bg-primary/20 text-primary border border-primary/30" :
-                answers[i] !== null ? "bg-accent/20 text-accent" : "bg-muted/30 text-muted-foreground"
-              }`}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-mono transition-all ${i === current ? "bg-primary/20 text-primary border border-primary/30" :
+                  answers[i] !== null ? "bg-accent/20 text-accent" : "bg-muted/30 text-muted-foreground"
+                }`}
             >
               {i + 1}
             </div>
