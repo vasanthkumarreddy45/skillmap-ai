@@ -1,16 +1,10 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Brain,
-  BookOpen,
-  MessageSquare,
-  Map,
-  Library,
-  Trophy,
-  Settings,
-  Zap,
+  LayoutDashboard, Brain, BookOpen, MessageSquare, Map, Library, Settings, Zap, Trophy, LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -23,6 +17,13 @@ const navItems = [
 
 export const AppSidebar = () => {
   const location = useLocation();
+  const { signOut, user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/signin");
+  };
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-sidebar flex flex-col">
@@ -43,9 +44,7 @@ export const AppSidebar = () => {
           <NavLink
             key={item.to}
             to={item.to}
-            className={() =>
-              `nav-item ${location.pathname === item.to ? "active" : ""}`
-            }
+            className={() => `nav-item ${location.pathname === item.to ? "active" : ""}`}
           >
             <motion.div
               initial={{ opacity: 0, x: -10 }}
@@ -62,16 +61,19 @@ export const AppSidebar = () => {
 
       {/* Bottom */}
       <div className="p-3 border-t border-border">
-        <NavLink
-          to="/settings"
-          className={() =>
-            `nav-item ${location.pathname === "/settings" ? "active" : ""}`
-          }
+        {user && (
+          <div className="mx-1 mb-2 px-3 py-2">
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          </div>
+        )}
+        <button
+          onClick={handleSignOut}
+          className="nav-item w-full"
         >
-          <Settings className="w-4 h-4" />
-          <span>Settings</span>
-        </NavLink>
-        <div className="mx-4 mt-4 mb-2 glass-card p-3">
+          <LogOut className="w-4 h-4" />
+          <span>Sign Out</span>
+        </button>
+        <div className="mx-4 mt-3 mb-2 glass-card p-3">
           <div className="flex items-center gap-2 mb-1">
             <Trophy className="w-3.5 h-3.5 text-warning" />
             <span className="text-xs font-medium text-foreground">7 Day Streak</span>
